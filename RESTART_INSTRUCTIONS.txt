@@ -1,0 +1,77 @@
+═══════════════════════════════════════════════════════════════
+  🔄 RESTART STREAMLIT TO FIX "0 CHUNKS" ISSUE
+═══════════════════════════════════════════════════════════════
+
+The code has been updated to fix the retrieval issue, but Streamlit
+needs to be restarted for the changes to take effect.
+
+═══════════════════════════════════════════════════════════════
+  📋 STEP-BY-STEP INSTRUCTIONS
+═══════════════════════════════════════════════════════════════
+
+1. Go to your PowerShell terminal where Streamlit is running
+
+2. Press: Ctrl + C
+   (This stops the Streamlit server)
+
+3. Wait for it to stop completely
+
+4. Run again:
+   streamlit run app.py
+
+5. The browser will automatically reload
+
+6. Re-upload your PDF document
+   (The previous one was cleared, you need to upload again)
+
+7. Try asking your question:
+   "Tell me about HyperQR"
+
+═══════════════════════════════════════════════════════════════
+  ✅ WHAT WAS FIXED
+═══════════════════════════════════════════════════════════════
+
+✓ Similarity threshold changed: 0.3 → 0.0
+✓ Added bypass for threshold when set to 0
+✓ Added debug logging to track search process
+✓ Fixed FAISS index validation
+
+═══════════════════════════════════════════════════════════════
+  📊 EXPECTED LOG OUTPUT (After Fix)
+═══════════════════════════════════════════════════════════════
+
+After restart, when you ask a question, you should see:
+
+INFO - Search returned distances: [2.34, 3.12, 4.56], indices: [0, 1, 2]
+INFO - Index total: 6, Documents: 6, Threshold: 0.0
+INFO - Found 5 relevant chunks for query (from 5 searched)
+
+The "Found X relevant chunks" should be > 0 (typically 3-5)
+
+═══════════════════════════════════════════════════════════════
+  🎯 QUICK TEST
+═══════════════════════════════════════════════════════════════
+
+After restart:
+1. Upload your HyperQR PDF
+2. Wait for "Processing complete"
+3. Go to "Ask Questions" tab
+4. Ask: "What is HyperQR?"
+5. You should get a detailed answer with sources!
+
+═══════════════════════════════════════════════════════════════
+  ❓ STILL NOT WORKING?
+═══════════════════════════════════════════════════════════════
+
+If you still see "0 relevant chunks", check:
+
+1. Is Ollama running? (Check sidebar: should show "✅ Ollama Connected")
+2. Did the document upload successfully? (Check "Document Library" tab)
+3. Does it show "Chunks: 6" or similar in the library?
+4. Copy the full log output and share it for debugging
+
+═══════════════════════════════════════════════════════════════
+
+Your ReasonableRAG system is complete and ready to use!
+Just restart and you're good to go! 🚀
+
