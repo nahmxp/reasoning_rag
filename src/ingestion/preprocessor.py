@@ -75,30 +75,41 @@ class IntelligentPreprocessor:
     
     def _process_messy_tabular(self, parsed_doc: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Process messy CSV/Excel data with LLM assistance
+        Process messy CSV/Excel data with LLM assistance.
+        Creates structured, searchable representation of the analyzed data.
         """
         logger.info("Processing messy tabular data with LLM reasoning")
         
         text = parsed_doc.get('text', '')
         tables = parsed_doc.get('tables', [])
+        metadata = parsed_doc.get('metadata', {})
         
         if not tables:
             return self._process_standard(parsed_doc)
         
+        # Get more context for analysis (up to 10k chars for better understanding)
+        analysis_text = text[:10000] if len(text) > 10000 else text
+        
         # Analyze the structure with LLM
-        analysis = self._analyze_messy_data(text[:5000])  # First 5000 chars
+        analysis = self._analyze_messy_data(analysis_text)
         
         # Generate helpful interpretation
-        interpretation = self._interpret_data_structure(text[:5000], analysis)
+        interpretation = self._interpret_data_structure(analysis_text, analysis)
         
-        # Create enriched chunks
-        chunks = self._create_tabular_chunks(text, analysis, interpretation)
+        # Try to create a structured representation (if possible)
+        structured_summary = self._create_structured_summary(text[:5000], analysis)
+        
+        # Create enriched chunks WITH analysis embedded in text
+        chunks = self._create_tabular_chunks(text, analysis, interpretation, structured_summary)
         
         # Update document
         parsed_doc['data_analysis'] = analysis
         parsed_doc['interpretation'] = interpretation
+        parsed_doc['structured_summary'] = structured_summary
         parsed_doc['chunks'] = chunks
         parsed_doc['processed'] = True
+        
+        logger.info(f"Processed messy tabular data: {len(chunks)} chunks created with embedded analysis")
         
         return parsed_doc
     
@@ -220,27 +231,101 @@ Explanation:"""
         
         return enriched_chunks
     
-    def _create_tabular_chunks(self, text: str, analysis: str, 
-                              interpretation: str) -> List[Dict[str, Any]]:
-        """Create chunks for tabular data with LLM insights"""
-        # Split text into manageable chunks
-        base_chunks = chunk_text_semantic(text, chunk_size=1500)
+    def _create_structured_summary(self, text: str, analysis: str) -> str:
+        """
+        Create a structured summary of the data that can be easily searched
+        """
+        prompt = f"""Based on this data analysis, create a structured summary that includes:
+1. What each column likely represents (if identifiable)
+2. Data types and patterns observed
+3. Key insights about the data structure
+4. Suggested questions users might ask about this data
+
+Data Preview:
+{text[:3000]}
+
+Analysis:
+{analysis}
+
+Structured Summary:"""
         
-        enriched_chunks = []
+        try:
+            summary = self.ollama.generate(prompt, model=config.FAST_LLM_MODEL, temperature=0.2)
+            return summary.strip()
+        except Exception as e:
+            logger.error(f"Error creating structured summary: {e}")
+            return ""
+    
+    def _create_tabular_chunks(self, text: str, analysis: str, 
+                              interpretation: str, structured_summary: str = "") -> List[Dict[str, Any]]:
+        """
+        Create chunks for tabular data with LLM insights.
+        IMPORTANT: Includes analysis/interpretation in the text field so it's embedded
+        and searchable in vector store.
+        """
+        # Split text into manageable chunks
+        base_chunks = chunk_text_semantic(text, chunk_size=1200)  # Reduced to fit analysis
+        
+        # Create a comprehensive metadata chunk with analysis/interpretation (always searchable)
+        metadata_text = f"""DATA STRUCTURE ANALYSIS AND INTERPRETATION:
+
+=== DATA ANALYSIS ===
+{analysis}
+
+=== INTERPRETATION & GUIDANCE ===
+{interpretation}"""
+        
+        if structured_summary:
+            metadata_text += f"""
+
+=== STRUCTURED SUMMARY ===
+{structured_summary}"""
+        
+        metadata_text += """
+
+This data has been analyzed and interpreted. The analysis above describes the structure, meaning, and patterns in the data."""
+        
+        metadata_chunk = {
+            'text': metadata_text,
+            'chunk_index': -1,  # Special index for metadata chunk
+            'context': {
+                'data_type': 'tabular',
+                'chunk_type': 'analysis_metadata',
+                'analysis': analysis,
+                'interpretation': interpretation,
+                'structured_summary': structured_summary
+            },
+            'metadata': {'is_analysis_chunk': True}
+        }
+        
+        enriched_chunks = [metadata_chunk]  # Add analysis chunk first
+        
+        # Enrich each data chunk with analysis context
         for idx, chunk_data in enumerate(base_chunks):
+            # Prepend analysis context to make it searchable
+            enriched_text = f"""DATA CONTEXT (from AI analysis):
+{analysis}
+
+ACTUAL DATA:
+{chunk_data['text']}
+
+NOTE: {interpretation[:200]}"""
+            
             enriched_chunk = {
-                'text': chunk_data['text'],
+                'text': enriched_text,  # Include analysis in embedded text!
                 'chunk_index': idx,
                 'context': {
                     'data_type': 'tabular',
                     'analysis': analysis,
                     'interpretation': interpretation,
-                    'chunk_position': f"{idx + 1} of {len(base_chunks)}"
+                    'chunk_position': f"{idx + 1} of {len(base_chunks)}",
+                    'has_analysis_context': True
                 },
                 'metadata': chunk_data
             }
             enriched_chunks.append(enriched_chunk)
         
+        logger.info(f"Created {len(enriched_chunks)} chunks for tabular data (including 1 analysis chunk)")
         return enriched_chunks
     
     def reason_about_content(self, text: str, question: str) -> str:
